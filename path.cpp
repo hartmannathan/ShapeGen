@@ -278,27 +278,38 @@ void PathMgr::FinalizeFigure(bool bclose)
         {
             int count = _cpoint - _fpoint;
             VERT16 *p = _fpoint, *q = p;
+            FIX16 d, dx, dy;  // quick-and-dirty distance approx
 
-            // Before starting a new figure, remove any
-            // redundant points from the current figure
+            // Before starting a new figure, remove any redundant
+            // points from the current figure. When checking for
+            // matches, ignore small arithmetic precision errors
             for (int i = 0; i < count; ++i)
             {
                 ++q;
-                if ((p->x != q->x || p->y != q->y) && ++p != q)
-                    *p = *q;
+                dx = p->x - q->x;
+                dy = p->y - q->y;
+                d = (dx ^ (dx >> 31)) + (dy ^ (dy >> 31));
+                if ((d > 255) && ++p != q)
+                    *p = *q;  // keep this non-redundant point
             }
-
-            if (p != _fpoint)
+            _cpoint = p;
+            if (_cpoint != _fpoint)  // more than one point in figure?
             {
-                if (bclose)
+                if (bclose)  // close this figure?
                 {
                     _figure->isclosed = true;
-                    if (p->x != _fpoint->x || p->y != _fpoint->y)
-                        *++p = *_fpoint;  // handy for stroked paths
-                }
-                _cpoint = p;
+                    dx = _cpoint->x - _fpoint->x;
+                    dy = _cpoint->y - _fpoint->y;
+                    d = (dx ^ (dx >> 31)) + (dy ^ (dy >> 31));
 
-                // Start a new figure in the same path
+                    // A closed figure starts and ends with the same
+                    // point, but remove any redundant end points
+                    if (d > 255) PathCheck(++_cpoint);
+                    *_cpoint = *_fpoint;
+                }
+
+                // Start a new figure in the same path. Note that
+                // FIGURE and VERT16 are both 8-byte structures
                 PathCheck(++_cpoint);
                 _figure = reinterpret_cast<FIGURE*>(_cpoint);
                 _figure->isclosed = false;
@@ -310,6 +321,7 @@ void PathMgr::FinalizeFigure(bool bclose)
         _cpoint = 0;  // empty figure
     }
 }
+
 //---------------------------------------------------------------------
 //
 // Public function: Closes the current figure (aka subpath) by adding a
